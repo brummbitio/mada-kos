@@ -1,0 +1,468 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. User & Security
+enum Role {
+  SUPERADMIN
+  ADMIN
+  OWNER
+  ACCOUNTANT
+  TENANT
+  HOUSEKEEPING
+}
+
+model User {
+  id          String @id @default(uuid())
+  email       String @unique
+  password    String
+  fullName    String
+  phoneNumber String @unique
+  role        Role   @default(TENANT)
+
+  // Profil Detail
+  gender      String?
+  age         Int?
+  instagram   String?
+  dateOfBirth DateTime?
+  addressKTP  String?   @db.Text
+  kelurahan   String?
+  kecamatan   String?
+  occupation  String?
+  institution String?
+  vehicleInfo String?
+
+  // Kontak Darurat
+  emergencyName     String?
+  emergencyRelation String?
+  emergencyPhone    String?
+
+  // Dokumen & Status
+  ktpPhotoUrl  String?
+  contractUrl  String?
+  tenantStatus String? @default("ACTIVE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Loyalitas
+  referralCode String @unique
+  currentCoins Int    @default(0)
+
+  // Relasi
+  leases            Lease[]
+  ownedProperties   Property[]         @relation("PropertyOwner")
+  managedProperties Property[]         @relation("PropertyManagers")
+  requestedTasks    HousekeepingTask[] @relation("TenantRequests")
+  staffTasks        HousekeepingTask[] @relation("StaffTasks")
+  coinActivities    CoinActivity[]
+  userVouchers      UserVoucher[]
+  activityLogs      ActivityLog[]
+  laundryOrders     LaundryOrder[]
+  complaints        Complaint[]
+  movingServices    MovingService[]
+}
+
+model Property {
+  id          String  @id @default(uuid())
+  name        String
+  isActive    Boolean @default(true)
+  bannerUrl   String?
+  video360Url String?
+  gender      String // Putra, Putri, Campur
+  address     String
+  lat         Float
+  lng         Float
+  description String  @db.Text
+  createdAt DateTime @default(now())
+
+  // Relasi
+  ownerId             String?
+  owner               User?                @relation("PropertyOwner", fields: [ownerId], references: [id])
+  assets              PropertyAsset[]
+  roomTypes           RoomType[]
+  managers            User[]               @relation("PropertyManagers")
+  complaints          Complaint[]
+  inventoryItems      InventoryItem[]
+  activityLogs        ActivityLog[]
+  rules               Rule[]
+  facilities          Facility[]
+  visits              Visit[]
+  laundryOrders       LaundryOrder[]
+  movingServices      MovingService[]
+  financeTransactions FinanceTransaction[]
+}
+
+model PropertyAsset {
+  id         String   @id @default(uuid())
+  propertyId String
+  url        String
+  category   String // GALLERY, FLOOR_PLAN
+  property   Property @relation(fields: [propertyId], references: [id])
+}
+
+model RoomType {
+  id          String  @id @default(uuid())
+  propertyId  String
+  name        String
+  description String? @db.Text
+
+  price1Month  Decimal
+  price3Months Decimal
+  price6Months Decimal
+
+  facilities String[]
+  images     RoomTypeImage[]
+
+  property Property @relation(fields: [propertyId], references: [id])
+  visits   Visit[]
+  rooms    Room[]
+}
+
+model RoomTypeImage {
+  id         String   @id @default(uuid())
+  roomTypeId String
+  url        String
+  roomType   RoomType @relation(fields: [roomTypeId], references: [id])
+}
+
+model Room {
+  id         String     @id @default(uuid())
+  roomTypeId String
+  roomNumber String
+  floor      Int
+  xPos       Float
+  yPos       Float
+  status     RoomStatus @default(AVAILABLE)
+
+  roomType          RoomType           @relation(fields: [roomTypeId], references: [id])
+  leases            Lease[]
+  housekeepingTasks HousekeepingTask[]
+  inventoryItems    InventoryItem[]
+  laundryOrders     LaundryOrder[]
+  complaints        Complaint[]
+  movingServices    MovingService[]
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+// 3. Transactions & Invoices
+model Lease {
+  id           String   @id @default(uuid())
+  tenantId     String
+  roomId       String
+  startDate    DateTime
+  endDate      DateTime
+  rentDuration Int      @default(1)
+  totalAmount  Decimal
+  status       String   @default("ACTIVE") // ACTIVE, TERMINATED
+
+  tenant   User      @relation(fields: [tenantId], references: [id])
+  room     Room      @relation(fields: [roomId], references: [id])
+  invoices Invoice[]
+}
+
+model Invoice {
+  id              String  @id @default(uuid())
+  leaseId         String
+  paymentId       String  @unique @default(cuid())
+  midtransOrderId String  @unique
+  amount          Decimal
+  depositAmount   Decimal @default(0)
+  type            String // RENT, DEPOSIT
+  status          String  @default("PENDING") // PENDING, SETTLEMENT, EXPIRED
+
+  paymentDate   DateTime?
+  periodStart   DateTime
+  periodEnd     DateTime
+  paymentMethod String?
+  invoiceUrl    String?
+
+  lease       Lease               @relation(fields: [leaseId], references: [id])
+  transaction FinanceTransaction?
+  createdAt   DateTime            @default(now())
+}
+
+model FinanceTransaction {
+  id         String  @id @default(uuid())
+  propertyId String
+  invoiceId  String? @unique
+
+  type          TransactionType
+  category      String
+  amount        Decimal
+  sharingAmount Decimal?
+  paymentMethod String
+  status        String          @default("COMPLETED")
+  description   String?         @db.Text
+
+  paymentDate DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+// 4. Operational Models
+model HousekeepingTask {
+  id               String    @id @default(uuid())
+  roomId           String
+  tenantId         String
+  staffId          String?
+  requestedDate    DateTime
+  requestedTime    String
+  status           String    @default("PENDING_APPROVAL")
+  isRescheduled    Boolean   @default(false)
+  rescheduleReason String?
+  rescheduledBy    String?
+  evidencePhoto    String?
+  adminNotes       String?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  room   Room  @relation(fields: [roomId], references: [id])
+  tenant User  @relation("TenantRequests", fields: [tenantId], references: [id])
+  staff  User? @relation("StaffTasks", fields: [staffId], references: [id])
+}
+
+model LaundryOrder {
+  id                String        @id @default(uuid())
+  propertyId        String
+  tenantId          String
+  roomId            String
+  serviceType       String
+  packagingPhotoUrl String?
+  totalPrice        Decimal       @default(0)
+  status            LaundryStatus @default(WAITING_PICKUP)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  property Property        @relation(fields: [propertyId], references: [id])
+  tenant   User            @relation(fields: [tenantId], references: [id])
+  room     Room            @relation(fields: [roomId], references: [id])
+  items    LaundryItem[]
+  payment  LaundryPayment?
+}
+
+model LaundryItem {
+  id             String       @id @default(uuid())
+  laundryOrderId String
+  itemName       String
+  pricePerUnit   Decimal
+  quantity       Float
+  unit           String
+  subTotal       Decimal
+  laundryOrder   LaundryOrder @relation(fields: [laundryOrderId], references: [id])
+}
+
+model LaundryPayment {
+  id             String       @id @default(uuid())
+  laundryOrderId String       @unique
+  invoiceNumber  String       @unique
+  amount         Decimal
+  status         String       @default("UNPAID")
+  paidAt         DateTime?
+  laundryOrder   LaundryOrder @relation(fields: [laundryOrderId], references: [id])
+}
+
+enum LaundryStatus {
+  WAITING_PICKUP
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Complaint {
+  id            String          @id @default(uuid())
+  propertyId    String
+  tenantId      String
+  roomId        String
+  category      String
+  title         String
+  description   String          @db.Text
+  evidencePhoto String?
+  status        ComplaintStatus @default(WAITING_CONFIRMATION)
+  adminNotes    String?         @db.Text
+  rating        Int?
+  tenantReview  String?         @db.Text
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  resolvedAt    DateTime?
+
+  property Property @relation(fields: [propertyId], references: [id])
+  tenant   User     @relation(fields: [tenantId], references: [id])
+  room     Room     @relation(fields: [roomId], references: [id])
+}
+
+enum ComplaintStatus {
+  WAITING_CONFIRMATION
+  IN_PROGRESS
+  COMPLETED
+}
+
+model InventoryCategory {
+  id    String          @id @default(uuid())
+  name  String
+  items InventoryItem[]
+}
+
+model InventoryItem {
+  id            String          @id @default(uuid())
+  categoryId    String
+  propertyId    String
+  roomId        String?
+  name          String
+  description   String?         @db.Text
+  status        InventoryStatus @default(GUDANG)
+  entryDate     DateTime        @default(now())
+  exitDate      DateTime?
+  lastScannedAt DateTime?
+
+  category InventoryCategory @relation(fields: [categoryId], references: [id])
+  property Property          @relation(fields: [propertyId], references: [id])
+  room     Room?             @relation(fields: [roomId], references: [id])
+}
+
+enum InventoryStatus {
+  GUDANG
+  TERSALURKAN
+  LAUNDRY
+  RUSAK
+  HILANG
+}
+
+// 5. Utilities
+model MovingService {
+  id               String       @id @default(uuid())
+  propertyId       String
+  tenantId         String
+  roomId           String
+  type             MovingType
+  pickupLocation   String       @db.Text
+  scheduledDate    DateTime
+  scheduledTime    String
+  status           MovingStatus @default(WAITING_CONFIRMATION)
+  rescheduleReason String?
+  cancelledReason  String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+  tenant   User     @relation(fields: [tenantId], references: [id])
+  room     Room     @relation(fields: [roomId], references: [id])
+}
+
+enum MovingType {
+  PENJEMPUTAN
+  PINDAHAN
+}
+
+enum MovingStatus {
+  WAITING_CONFIRMATION
+  READY_TO_PICKUP
+  COMPLETED
+  CANCELLED
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  propertyId String
+  userId     String
+  action     String
+  details    String   @db.Text
+  targetId   String?
+  targetType String?
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+}
+
+model Rule {
+  id         String   @id @default(uuid())
+  propertyId String
+  title      String
+  content    String   @db.Text
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  property   Property @relation(fields: [propertyId], references: [id])
+}
+
+model Facility {
+  id          String   @id @default(uuid())
+  propertyId  String
+  name        String
+  description String?
+  iconName    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  property    Property @relation(fields: [propertyId], references: [id])
+}
+
+model Visit {
+  id               String    @id @default(uuid())
+  propertyId       String
+  roomTypeId       String?
+  tenantId         String?
+  guestName        String
+  guestPhone       String
+  scheduledDate    DateTime
+  scheduledTime    String
+  status           String    @default("PENDING")
+  rescheduleReason String?
+  rescheduledBy    String?
+  property         Property  @relation(fields: [propertyId], references: [id])
+  roomType         RoomType? @relation(fields: [roomTypeId], references: [id])
+  createdAt        DateTime  @default(now())
+}
+
+model CoinActivity {
+  id          String   @id @default(uuid())
+  userId      String
+  amount      Int
+  type        String
+  description String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Voucher {
+  id             String        @id @default(uuid())
+  title          String
+  description    String        @db.Text
+  bannerUrl      String?
+  category       String
+  coinRequired   Int
+  availableStock Int
+  validUntil     DateTime
+  discountAmount Decimal?
+  createdAt      DateTime      @default(now())
+  userVouchers   UserVoucher[]
+}
+
+model UserVoucher {
+  id         String    @id @default(uuid())
+  userId     String
+  voucherId  String
+  isUsed     Boolean   @default(false)
+  usedAt     DateTime?
+  redeemedAt DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id])
+  voucher    Voucher   @relation(fields: [voucherId], references: [id])
+}
