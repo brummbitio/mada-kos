@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-poppins);
+
+  --color-primary-yellow: #C39E5F;
+  --color-primary-yellow-100: #EADBC0;
+  --color-primary-yellow-500: #C39E5F;
+  --color-primary-yellow-700: #8D6D3A;
+
+  --color-primary-violet: #0E1429;
+  --color-primary-violet-100: #CFD1D8;
+  --color-primary-violet-500: #0E1429;
+  --color-primary-violet-700: #05070F;
+
+  --color-neutral-base: #33433D;
+  --color-neutral-100: #E6E8E7;
+  --color-neutral-300: #A8AFA9;
+  --color-neutral-500: #33433D;
+  --color-neutral-700: #1A2220;
+  --color-neutral-900: #080B0A;
+
+  --color-status-success: #A4E54A;
+  --color-status-info: #46BCFC;
+  --color-status-warning: #FFC832;
+  --color-status-danger: #FF517A;
+  --color-status-orange: #FE7C1A;
+
+  --animate-slide-in-right: slide-in-right 0.3s ease-out;
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+
+    to {
+      transform: translateX(0);
+    }
+  }
+}
+
+@utility animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+/* @media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+} */
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-poppins);
+}
